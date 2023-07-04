@@ -1,48 +1,57 @@
-from flask import Flask, render_template, redirect, url_for, request, session
+from flask import Flask , request , jsonify , make_response , render_template , session
+import jwt
+from datetime import datetime , timedelta
+from functools import wraps
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.config['SECRET_KEY'] = '6bb14f2e41bb41209aae287dc1a9f063'
 
-# Simulated user database (replace with your own user retrieval logic)
-users = {'user1': {'password': 'password1'},
-         'user2': {'password': 'password2'}}
+def token_required(func):
+    @wraps(func)
+    def decorated(*args,**kwargs):
+        token = request.args.get('token')
+        if not token:
+            return jsonify({'Alert!':'Token is missing'})
+        try:
+            payload =jwt.decode(token, app.config ['SECRET_KEY'])
+        except:
+            return jsonify({'Alert!':'Invalid Token'})
 
+    return decorated
 
+#home
 @app.route('/')
 def home():
-    return 'Welcome to the home page!'
+    if not session.get('logged_in'):
+        return render_template('login.html')
+    else:
+        return'Logged in currently!'
+
+#for public
+@app.route('/public')
+def public():
+    return 'For Public'
+#Authentificated
+@app.route('/auth')
+@token_required
+def auth():
+    return 'JWT is verified. welcome to your dashboard!'
+
+#login
+@app.route('/login', methods=['POST'])
+def lgoin():
+    if request.form['username'] and request.form['password']=='123':
+        session['logged_in'] = True
+        token = jwt.encode({
+            'user':request.form['username'],
+            'expiration':str(datetime.utcnow() + timedelta(seconds=60))
+        },
+            app.config['SECRET_KEY'])
+        return jsonify({'token': token})
+
+    else:
+        return make_response('Unable to verify', 403, {'WWW-Authentificate' : 'Basic realm:"Authentification Failed !'})
 
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if 'username' in session:
-        return redirect(url_for('dashboard'))
-
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        if username in users and password == users[username]['password']:
-            session['username'] = username
-            return redirect(url_for('dashboard'))
-        else:
-            return 'Invalid username or password'
-
-    return render_template('login.html')
-
-
-@app.route('/dashboard')
-def dashboard():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-
-    return 'Welcome to the dashboard!'
-
-
-@app.route('/logout')
-def logout():
-    session.pop('username', None)
-    return redirect(url_for('home'))
-
-
-if __name__ == '__main__':
+if __name__ == "__main__" :
     app.run(debug=True)
